@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "BTicino Thermostat",
+        "description": "Enter the IP address of your thermostat and the local PIN (XOpen password). Leave the PIN empty to retrieve it from the cloud.",
+        "data": {
+          "host": "IP Address",
+          "pin": "PIN (local password)"
+        }
+      },
+      "cloud": {
+        "title": "Cloud Credentials",
+        "description": "Enter your BTicino cloud credentials to retrieve the local password.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      },
+      "select_plant": {
+        "title": "Select Plant",
+        "description": "Multiple plants found. Select the one to use.",
+        "data": {
+          "plant": "Plant"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the thermostat. Check the IP address and make sure it is reachable.",
+      "invalid_auth": "Invalid PIN or authentication failed.",
+      "invalid_cloud_auth": "Invalid cloud credentials.",
+      "no_password_found": "No local password found in cloud data.",
+      "unknown": "An unexpected error occurred."
+    },
+    "abort": {
+      "already_configured": "This thermostat is already configured."
+    }
+  }
+}
