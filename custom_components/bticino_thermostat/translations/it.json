@@ -1,0 +1,39 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Termostato BTicino",
+        "description": "Inserisci l'indirizzo IP del termostato e il PIN locale (password XOpen). Lascia il PIN vuoto per recuperarlo dal cloud.",
+        "data": {
+          "host": "Indirizzo IP",
+          "pin": "PIN (password locale)"
+        }
+      },
+      "cloud": {
+        "title": "Credenziali Cloud",
+        "description": "Inserisci le credenziali del tuo account BTicino cloud per recuperare la password locale.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      },
+      "select_plant": {
+        "title": "Seleziona Impianto",
+        "description": "Sono stati trovati pi\u00f9 impianti. Seleziona quello da utilizzare.",
+        "data": {
+          "plant": "Impianto"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossibile connettersi al termostato. Verifica l'indirizzo IP e che sia raggiungibile.",
+      "invalid_auth": "PIN non valido o autenticazione fallita.",
+      "invalid_cloud_auth": "Credenziali cloud non valide.",
+      "no_password_found": "Nessuna password locale trovata nei dati cloud.",
+      "unknown": "Si \u00e8 verificato un errore imprevisto."
+    },
+    "abort": {
+      "already_configured": "Questo termostato \u00e8 gi\u00e0 configurato."
+    }
+  }
+}
