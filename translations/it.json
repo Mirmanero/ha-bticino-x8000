@@ -3,14 +3,15 @@
     "step": {
       "user": {
         "title": "Termostato BTicino",
-        "description": "Inserisci l'indirizzo IP del termostato e il PIN locale (password XOpen). Lascia il PIN vuoto per recuperarlo dal cloud.",
+        "description": "Inserisci l'indirizzo IP del termostato e il PIN locale (password XOpen).",
         "data": {
           "host": "Indirizzo IP",
-          "pin": "PIN (password locale)"
+          "pin": "PIN (password locale)",
+          "retrieve_from_cloud": "Non conosci il PIN? Recuperalo dal Cloud"
         }
       },
       "cloud": {
-        "title": "Credenziali Cloud",
+        "title": "Recupera PIN dal Cloud",
         "description": "Inserisci le credenziali del tuo account BTicino cloud per recuperare la password locale.",
         "data": {
           "username": "Email",
@@ -19,7 +20,7 @@
       },
       "select_plant": {
         "title": "Seleziona Impianto",
-        "description": "Sono stati trovati pi\u00f9 impianti. Seleziona quello da utilizzare.",
+        "description": "Sono stati trovati più impianti. Seleziona quello da utilizzare.",
         "data": {
           "plant": "Impianto"
         }
@@ -30,10 +31,49 @@
       "invalid_auth": "PIN non valido o autenticazione fallita.",
       "invalid_cloud_auth": "Credenziali cloud non valide.",
       "no_password_found": "Nessuna password locale trovata nei dati cloud.",
-      "unknown": "Si \u00e8 verificato un errore imprevisto."
+      "host_required": "L'indirizzo IP è necessario per recuperare il PIN dal cloud.",
+      "pin_required": "Il PIN è obbligatorio. Spunta la casella sotto per recuperarlo dal cloud.",
+      "unknown": "Si è verificato un errore imprevisto."
     },
     "abort": {
-      "already_configured": "Questo termostato \u00e8 gi\u00e0 configurato."
+      "already_configured": "Questo termostato è già configurato."
+    }
+  },
+  "entity": {
+    "climate": {
+      "bticino_thermostat": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "none": "Nessuno",
+              "boost_30": "Boost 30 min",
+              "boost_60": "Boost 60 min",
+              "boost_90": "Boost 90 min",
+              "protection": "Protezione"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "temperature": {
+        "name": "Temperatura"
+      },
+      "humidity": {
+        "name": "Umidità"
+      },
+      "setpoint": {
+        "name": "Setpoint"
+      }
+    },
+    "select": {
+      "function_mode": {
+        "name": "Funzione",
+        "state": {
+          "heating": "Riscaldamento",
+          "cooling": "Raffrescamento"
+        }
+      }
     }
   }
 }

@@ -61,7 +61,7 @@ Click the button above, or add manually:
 ### Climate entity details
 
 - **HVAC modes**: Off, Heat, Cool, Auto
-- **Preset modes**: None, Boost (30 min), Protection
+- **Preset modes**: None, Boost 30/60/90 min, Protection
 - **Temperature range**: 7–40 °C (0.5° step)
 - **Current temperature**: Ambient temperature sensor
 - **Current humidity**: Ambient humidity sensor
