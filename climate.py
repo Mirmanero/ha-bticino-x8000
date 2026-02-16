@@ -1,7 +1,6 @@
 """Climate platform for BTicino Thermostat."""
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -11,27 +10,22 @@ from homeassistant.components.climate import (
     HVACAction,
     HVACMode,
 )
-from homeassistant.components.climate.const import PRESET_BOOST, PRESET_NONE
+from homeassistant.components.climate.const import PRESET_NONE
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_TEMPERATURE, CONF_HOST, CONF_PORT, UnitOfTemperature
+from homeassistant.const import ATTR_TEMPERATURE, CONF_HOST, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_PIN, DOMAIN
+from .const import DOMAIN
 from .bticino.thermostat import Thermostat
 from .bticino.models import ThermostatStatus
 
 _LOGGER = logging.getLogger(__name__)
 
 PRESET_PROTECTION = "protection"
-
-# Map HA HVAC modes to bticino set_mode calls
-HVAC_MODE_MAP = {
-    HVACMode.OFF: {"mode": "OFF"},
-    HVACMode.HEAT: {"mode": "MANUAL", "function": "HEATING"},
-    HVACMode.COOL: {"mode": "MANUAL", "function": "COOLING"},
-    HVACMode.AUTO: {"mode": "AUTOMATIC"},
-}
+PRESET_BOOST_30 = "boost_30"
+PRESET_BOOST_60 = "boost_60"
+PRESET_BOOST_90 = "boost_90"
 
 
 async def async_setup_entry(
@@ -50,18 +44,20 @@ class BticinoClimateEntity(ClimateEntity):
 
     _attr_has_entity_name = True
     _attr_name = None
+    _attr_translation_key = "bticino_thermostat"
     _attr_should_poll = False
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = 0.5
     _attr_min_temp = 7.0
     _attr_max_temp = 40.0
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT, HVACMode.COOL, HVACMode.AUTO]
-    _attr_preset_modes = [PRESET_NONE, PRESET_BOOST, PRESET_PROTECTION]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.AUTO, HVACMode.HEAT]
+    _attr_preset_modes = [
+        PRESET_NONE, PRESET_BOOST_30, PRESET_BOOST_60, PRESET_BOOST_90,
+        PRESET_PROTECTION,
+    ]
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.PRESET_MODE
-        | ClimateEntityFeature.TURN_ON
-        | ClimateEntityFeature.TURN_OFF
     )
 
     def __init__(self, thermostat: Thermostat, entry: ConfigEntry) -> None:
@@ -75,7 +71,6 @@ class BticinoClimateEntity(ClimateEntity):
             "manufacturer": "BTicino",
             "model": "Smarther Thermostat",
         }
-        self._last_function = "HEATING"
 
     @property
     def available(self) -> bool:
@@ -83,41 +78,20 @@ class BticinoClimateEntity(ClimateEntity):
         return self._thermostat.connected
 
     @property
-    def current_temperature(self) -> float | None:
-        """Return the current ambient temperature."""
-        status = self._thermostat.status
-        return status.ambient_temperature or status.measured_temperature
-
-    @property
     def target_temperature(self) -> float | None:
         """Return the target temperature."""
         return self._thermostat.status.setpoint
 
     @property
-    def current_humidity(self) -> float | None:
-        """Return the current humidity."""
-        return self._thermostat.status.ambient_humidity
-
-    @property
     def hvac_mode(self) -> HVACMode:
         """Return the current HVAC mode."""
-        status = self._thermostat.status
-        mode = status.mode
-        if mode is None or mode == "OFF":
-            return HVACMode.OFF
-        if mode == "PROTECTION":
+        mode = self._thermostat.status.mode
+        if mode is None or mode in ("OFF", "PROTECTION"):
             return HVACMode.OFF
         if mode == "AUTOMATIC":
             return HVACMode.AUTO
-        if mode == "MANUAL":
-            if status.function == "COOLING":
-                return HVACMode.COOL
-            return HVACMode.HEAT
-        if mode == "BOOST":
-            if status.function == "COOLING":
-                return HVACMode.COOL
-            return HVACMode.HEAT
-        return HVACMode.OFF
+        # MANUAL and BOOST → HEAT (means "actively controlled")
+        return HVACMode.HEAT
 
     @property
     def hvac_action(self) -> HVACAction:
@@ -134,30 +108,37 @@ class BticinoClimateEntity(ClimateEntity):
     @property
     def preset_mode(self) -> str:
         """Return the current preset mode."""
-        mode = self._thermostat.status.mode
-        if mode == "BOOST":
-            return PRESET_BOOST
-        if mode == "PROTECTION":
+        status = self._thermostat.status
+        if status.mode == "BOOST":
+            boost_time = status.raw_params.get("boostTime")
+            if boost_time == "60":
+                return PRESET_BOOST_60
+            if boost_time == "90":
+                return PRESET_BOOST_90
+            return PRESET_BOOST_30
+        if status.mode == "PROTECTION":
             return PRESET_PROTECTION
         return PRESET_NONE
 
+    def _current_function(self) -> str:
+        """Return the current function from thermostat status."""
+        return self._thermostat.status.function or "HEATING"
+
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        """Set HVAC mode."""
-        params = HVAC_MODE_MAP.get(hvac_mode)
-        if params is None:
-            return
-
-        kwargs: dict[str, Any] = {"mode": params["mode"]}
-        if "function" in params:
-            kwargs["function"] = params["function"]
-            self._last_function = params["function"]
-
-        if hvac_mode in (HVACMode.HEAT, HVACMode.COOL):
-            current_setpoint = self._thermostat.status.setpoint
-            if current_setpoint is not None:
-                kwargs["setpoint"] = current_setpoint
-
-        await self._thermostat.set_mode(**kwargs)
+        """Set HVAC mode (never changes function)."""
+        if hvac_mode == HVACMode.OFF:
+            await self._thermostat.set_mode(mode="OFF")
+        elif hvac_mode == HVACMode.AUTO:
+            await self._thermostat.set_mode(
+                mode="AUTOMATIC",
+                function=self._current_function(),
+            )
+        elif hvac_mode == HVACMode.HEAT:
+            await self._thermostat.set_mode(
+                mode="MANUAL",
+                function=self._current_function(),
+                setpoint=self._thermostat.status.setpoint,
+            )
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set target temperature."""
@@ -165,40 +146,32 @@ class BticinoClimateEntity(ClimateEntity):
         if temperature is None:
             return
 
-        status = self._thermostat.status
-        function = status.function or self._last_function
-        mode = status.mode
-        if mode in ("OFF", "PROTECTION", None):
-            mode = "MANUAL"
-
         await self._thermostat.set_mode(
             mode="MANUAL",
-            function=function,
+            function=self._current_function(),
             setpoint=temperature,
         )
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set preset mode."""
-        if preset_mode == PRESET_BOOST:
-            function = self._thermostat.status.function or self._last_function
+        if preset_mode in (PRESET_BOOST_30, PRESET_BOOST_60, PRESET_BOOST_90):
+            minutes = {
+                PRESET_BOOST_30: 30,
+                PRESET_BOOST_60: 60,
+                PRESET_BOOST_90: 90,
+            }[preset_mode]
             await self._thermostat.set_mode(
                 mode="BOOST",
-                function=function,
-                boost_minutes=30,
+                function=self._current_function(),
+                boost_minutes=minutes,
             )
         elif preset_mode == PRESET_PROTECTION:
             await self._thermostat.set_mode(mode="PROTECTION")
         elif preset_mode == PRESET_NONE:
-            # Return to automatic
-            await self._thermostat.set_mode(mode="AUTOMATIC")
-
-    async def async_turn_on(self) -> None:
-        """Turn on (set to AUTO)."""
-        await self.async_set_hvac_mode(HVACMode.AUTO)
-
-    async def async_turn_off(self) -> None:
-        """Turn off."""
-        await self.async_set_hvac_mode(HVACMode.OFF)
+            await self._thermostat.set_mode(
+                mode="AUTOMATIC",
+                function=self._current_function(),
+            )
 
     async def async_added_to_hass(self) -> None:
         """Run when entity is added to hass: connect and register callbacks."""

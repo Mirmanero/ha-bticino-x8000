@@ -20,6 +20,8 @@ from .bticino.cloud import CloudApiError, fetch_local_password
 
 _LOGGER = logging.getLogger(__name__)
 
+CONF_RETRIEVE_FROM_CLOUD = "retrieve_from_cloud"
+
 
 async def _test_connection(host: str, port: int, pin: str) -> None:
     """Test TCP connection and authentication. Raises on failure."""
@@ -53,32 +55,40 @@ class BticinoThermostatConfigFlow(ConfigFlow, domain=DOMAIN):
             self._host = user_input[CONF_HOST]
             self._pin = user_input.get(CONF_PIN, "")
 
-            if not self._pin:
-                return await self.async_step_cloud()
+            # User wants to retrieve PIN from cloud
+            if user_input.get(CONF_RETRIEVE_FROM_CLOUD, False):
+                if not self._host:
+                    errors[CONF_HOST] = "host_required"
+                else:
+                    return await self.async_step_cloud()
 
-            # Test connection with provided PIN
-            try:
-                await _test_connection(
-                    self._host, DEFAULT_PORT, self._pin
-                )
-            except AuthenticationError:
-                errors["base"] = "invalid_auth"
-            except (BticinoConnectionError, OSError, asyncio.TimeoutError):
-                errors["base"] = "cannot_connect"
-            except Exception:
-                _LOGGER.exception("Unexpected error during connection test")
-                errors["base"] = "unknown"
+            elif not self._pin:
+                errors[CONF_PIN] = "pin_required"
+
             else:
-                await self.async_set_unique_id(self._host)
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(
-                    title=f"BTicino Thermostat ({self._host})",
-                    data={
-                        CONF_HOST: self._host,
-                        CONF_PORT: DEFAULT_PORT,
-                        CONF_PIN: self._pin,
-                    },
-                )
+                # Test connection with provided PIN
+                try:
+                    await _test_connection(
+                        self._host, DEFAULT_PORT, self._pin
+                    )
+                except AuthenticationError:
+                    errors["base"] = "invalid_auth"
+                except (BticinoConnectionError, OSError, asyncio.TimeoutError):
+                    errors["base"] = "cannot_connect"
+                except Exception:
+                    _LOGGER.exception("Unexpected error during connection test")
+                    errors["base"] = "unknown"
+                else:
+                    await self.async_set_unique_id(self._host)
+                    self._abort_if_unique_id_configured()
+                    return self.async_create_entry(
+                        title=f"BTicino Thermostat ({self._host})",
+                        data={
+                            CONF_HOST: self._host,
+                            CONF_PORT: DEFAULT_PORT,
+                            CONF_PIN: self._pin,
+                        },
+                    )
 
         return self.async_show_form(
             step_id="user",
@@ -86,6 +96,7 @@ class BticinoThermostatConfigFlow(ConfigFlow, domain=DOMAIN):
                 {
                     vol.Required(CONF_HOST, default=self._host): str,
                     vol.Optional(CONF_PIN, default=self._pin): str,
+                    vol.Optional(CONF_RETRIEVE_FROM_CLOUD, default=False): bool,
                 }
             ),
             errors=errors,
