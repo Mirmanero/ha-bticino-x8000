@@ -78,6 +78,17 @@ class BticinoClimateEntity(ClimateEntity):
         return self._thermostat.connected
 
     @property
+    def current_temperature(self) -> float | None:
+        """Return the current measured temperature."""
+        status = self._thermostat.status
+        return status.ambient_temperature or status.measured_temperature
+
+    @property
+    def current_humidity(self) -> float | None:
+        """Return the current measured humidity."""
+        return self._thermostat.status.ambient_humidity
+
+    @property
     def target_temperature(self) -> float | None:
         """Return the target temperature."""
         return self._thermostat.status.setpoint
