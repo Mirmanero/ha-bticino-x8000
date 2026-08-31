@@ -50,6 +50,12 @@ Click the button above, or add manually:
    - **PIN**: Local XOpen password (leave empty to retrieve from cloud)
 4. If you left the PIN empty, you'll be asked for your BTicino cloud credentials to retrieve it automatically
 
+### Multiple thermostats
+
+Each physical thermostat needs its own config entry (its own IP address and PIN) — add the integration once per thermostat.
+
+If your BTicino app has more than one thermostat (either on different plants or multiple gateways on the same plant), the cloud retrieval step will list all of them, labeled with their plant name and gateway description (e.g. "Casa - Primo Piano"). When adding each config entry, pick the one whose description matches the physical unit at the IP address you entered.
+
 ## Entities
 
 ### Climate

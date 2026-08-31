@@ -19,10 +19,10 @@
         }
       },
       "select_plant": {
-        "title": "Select Plant",
-        "description": "Multiple plants found. Select the one to use.",
+        "title": "Select Thermostat",
+        "description": "Multiple thermostats were found (either across different plants or multiple gateways in the same plant). Select the one whose PIN matches the IP address you entered.",
         "data": {
-          "plant": "Plant"
+          "plant": "Thermostat"
         }
       }
     },

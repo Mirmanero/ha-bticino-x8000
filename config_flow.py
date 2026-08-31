@@ -146,24 +146,35 @@ class BticinoThermostatConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    @staticmethod
+    def _gateway_label(plant) -> str:
+        """Build a human-readable label for a gateway (thermostat).
+
+        A single plant can have several gateways (e.g. one X8000 per
+        floor), each with its own Description ("Primo Piano", "Secondo
+        Piano", ...). Include both the plant name and the gateway
+        description so entries stay distinguishable in either case
+        (multiple plants, or multiple gateways within one plant).
+        """
+        if plant.description and plant.description != plant.plant_name:
+            return f"{plant.plant_name} - {plant.description}"
+        return f"{plant.plant_name} ({plant.plant_id})"
+
     async def async_step_select_plant(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Handle plant selection when multiple plants are found."""
+        """Handle gateway selection when multiple gateways/thermostats are found."""
         if user_input is not None:
             selected = user_input["plant"]
             for plant in self._plants:
-                label = f"{plant.plant_name} ({plant.plant_id})"
-                if label == selected:
+                if self._gateway_label(plant) == selected:
                     self._pin = plant.psw_open
                     break
             return await self.async_step_user(
                 {CONF_HOST: self._host, CONF_PIN: self._pin}
             )
 
-        plant_options = [
-            f"{p.plant_name} ({p.plant_id})" for p in self._plants
-        ]
+        plant_options = [self._gateway_label(p) for p in self._plants]
 
         return self.async_show_form(
             step_id="select_plant",

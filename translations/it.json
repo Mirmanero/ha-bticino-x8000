@@ -19,10 +19,10 @@
         }
       },
       "select_plant": {
-        "title": "Seleziona Impianto",
-        "description": "Sono stati trovati più impianti. Seleziona quello da utilizzare.",
+        "title": "Seleziona Termostato",
+        "description": "Sono stati trovati più termostati (impianti diversi o più gateway nello stesso impianto). Seleziona quello il cui PIN corrisponde all'indirizzo IP inserito.",
         "data": {
-          "plant": "Impianto"
+          "plant": "Termostato"
         }
       }
     },

@@ -31,11 +31,18 @@ APP_VERSION = "legacy-1.3.10"
 
 @dataclass
 class PlantInfo:
-    """Info about a plant (installation) from the cloud."""
+    """Info about a single gateway (thermostat) within a plant (installation).
+
+    A plant can have multiple gateways (e.g. one X8000 per floor/room), each
+    with its own local password (PswOpen). One PlantInfo is produced per
+    gateway found in the cloud response, not per plant.
+    """
     plant_id: str = ""
     plant_name: str = ""
     psw_open: str = ""
     gateway_id: str = ""
+    description: str = ""
+    mac_address: str = ""
     raw: dict = field(default_factory=dict)
 
 
@@ -144,28 +151,81 @@ def _find_passwords(data) -> list[str]:
 
 
 def extract_plants_info(plants_data: list[dict]) -> list[PlantInfo]:
-    """Extract plant info with passwords from raw API response.
+    """Extract gateway (thermostat) info with passwords from raw API response.
+
+    A plant (installation) can contain several gateways under
+    ``PlantInfo[].gatewayList[]`` -- typically one X8000 unit per
+    floor/room -- and each gateway has its *own* local password
+    (PswOpen). Previously only the first PswOpen found anywhere in the
+    plant JSON was used, so users with more than one thermostat per
+    plant only ever got a working PIN for one of them.
 
     Returns:
-        List of PlantInfo, one per plant found
+        List of PlantInfo, one per gateway found (not one per plant).
     """
     results = []
     if not plants_data:
         return results
 
     for plant in plants_data:
-        info = PlantInfo(raw=plant)
-        info.plant_name = plant.get("PlantName", plant.get("plantName",
-                          plant.get("Name", plant.get("name", ""))))
-        info.plant_id = str(plant.get("PlantId", plant.get("plantId",
-                        plant.get("Id", plant.get("id", "")))))
-        info.gateway_id = str(plant.get("GatewayId", plant.get("gatewayId", "")))
+        plant_name = plant.get("PlantName", plant.get("plantName",
+                     plant.get("Name", plant.get("name", ""))))
+        plant_id = str(plant.get("PlantId", plant.get("plantId",
+                   plant.get("Id", plant.get("id", "")))))
 
-        passwords = _find_passwords(plant)
-        if passwords:
-            info.psw_open = passwords[0]
+        plant_info_list = plant.get("PlantInfo", plant.get("plantInfo", []))
+        if isinstance(plant_info_list, dict):
+            plant_info_list = [plant_info_list]
 
-        results.append(info)
+        found_gateway = False
+
+        for plant_info in plant_info_list or []:
+            gateway_list = plant_info.get("gatewayList", plant_info.get("GatewayList", []))
+            if isinstance(gateway_list, dict):
+                gateway_list = [gateway_list]
+
+            for gateway in gateway_list or []:
+                gateway_id = str(gateway.get("GatewayID", gateway.get("gatewayId", "")))
+                gateway_psw = gateway.get("PswOpen", "")
+
+                gateway_info_list = gateway.get("GatewayInfo", gateway.get("gatewayInfo", []))
+                if isinstance(gateway_info_list, dict):
+                    gateway_info_list = [gateway_info_list]
+
+                if gateway_info_list:
+                    for gw_info in gateway_info_list:
+                        info = PlantInfo(raw=gateway)
+                        info.plant_id = plant_id
+                        info.plant_name = plant_name
+                        info.gateway_id = gateway_id
+                        info.mac_address = gw_info.get("MacAddress", "")
+                        info.description = gw_info.get("Description", "") or gateway_id
+                        info.psw_open = gw_info.get("PswOpen", gateway_psw)
+                        if info.psw_open:
+                            results.append(info)
+                            found_gateway = True
+                elif gateway_psw:
+                    info = PlantInfo(raw=gateway)
+                    info.plant_id = plant_id
+                    info.plant_name = plant_name
+                    info.gateway_id = gateway_id
+                    info.description = gateway_id
+                    info.psw_open = gateway_psw
+                    results.append(info)
+                    found_gateway = True
+
+        if not found_gateway:
+            # Unknown/legacy response shape: fall back to a recursive
+            # search for a single password, same as before.
+            info = PlantInfo(raw=plant)
+            info.plant_name = plant_name
+            info.plant_id = plant_id
+            info.gateway_id = str(plant.get("GatewayId", plant.get("gatewayId", "")))
+            passwords = _find_passwords(plant)
+            if passwords:
+                info.psw_open = passwords[0]
+                info.description = plant_name
+                results.append(info)
 
     return results
 
