@@ -17,7 +17,7 @@ Unofficial custom integration for [Home Assistant](https://www.home-assistant.io
 - Automatic reconnection with exponential backoff
 - Climate control: temperature setpoint, HVAC mode, preset modes
 - Current temperature and humidity readings
-- Cloud password retrieval (optional — retrieve the local PIN from BTicino cloud)
+- Cloud-based bulk setup (optional) — log in once to automatically find and set up every thermostat on your account
 - Config Flow UI setup
 - Italian and English translations
 
@@ -45,16 +45,20 @@ Click the button above, or add manually:
 
 1. Go to **Settings** → **Devices & Services** → **Add Integration**
 2. Search for **BTicino Thermostat**
-3. Enter:
-   - **IP Address**: IP of your thermostat
-   - **PIN**: Local XOpen password (leave empty to retrieve from cloud)
-4. If you left the PIN empty, you'll be asked for your BTicino cloud credentials to retrieve it automatically
+3. Choose how to set it up:
+   - **Set up automatically from BTicino cloud** (recommended, especially with multiple thermostats) — see below
+   - **Enter IP address and PIN manually** — for a single thermostat whose IP and local PIN (XOpen password) you already know; if you don't know the PIN, you can retrieve it from the cloud for that one thermostat instead of typing it
 
-### Multiple thermostats
+### Automatic setup from cloud
 
-Each physical thermostat needs its own config entry (its own IP address and PIN) — add the integration once per thermostat.
+Log in once with your BTicino cloud account credentials. The integration downloads the full list of thermostats registered on your account — across all plants and gateways — each labeled with its plant name and gateway description (e.g. "Casa - Primo Piano").
 
-If your BTicino app has more than one thermostat (either on different plants or multiple gateways on the same plant), the cloud retrieval step will list all of them, labeled with their plant name and gateway description (e.g. "Casa - Primo Piano"). When adding each config entry, pick the one whose description matches the physical unit at the IP address you entered.
+It then asks you, one at a time, for the local IP address of each thermostat (you'll need to know these from your own network — there's no auto-discovery). For each one you can:
+
+- enter its IP to add it right away (the connection is tested immediately), or
+- leave the field blank to skip it — you can always add it later from **Settings → Devices & Services**
+
+The first thermostat you add finishes the setup wizard; any additional ones are created automatically in the background, with no further prompts.
 
 ## Entities
 
