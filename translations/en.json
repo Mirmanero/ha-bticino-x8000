@@ -3,6 +3,14 @@
     "step": {
       "user": {
         "title": "BTicino Thermostat",
+        "description": "How would you like to set up your BTicino thermostat(s)?",
+        "menu_options": {
+          "cloud": "Set up automatically from BTicino cloud (recommended, especially with multiple thermostats)",
+          "manual": "Enter IP address and PIN manually"
+        }
+      },
+      "manual": {
+        "title": "BTicino Thermostat",
         "description": "Enter the IP address of your thermostat and the local PIN (XOpen password).",
         "data": {
           "host": "IP Address",
@@ -10,7 +18,7 @@
           "retrieve_from_cloud": "Don't know the PIN? Retrieve it from Cloud"
         }
       },
-      "cloud": {
+      "manual_cloud": {
         "title": "Retrieve PIN from Cloud",
         "description": "Enter your BTicino cloud credentials to retrieve the local password.",
         "data": {
@@ -18,11 +26,26 @@
           "password": "Password"
         }
       },
-      "select_plant": {
+      "manual_select_plant": {
         "title": "Select Thermostat",
         "description": "Multiple thermostats were found (either across different plants or multiple gateways in the same plant). Select the one whose PIN matches the IP address you entered.",
         "data": {
           "plant": "Thermostat"
+        }
+      },
+      "cloud": {
+        "title": "Connect to BTicino Cloud",
+        "description": "Enter your BTicino cloud account credentials. We'll look up every thermostat registered to your account and set them all up.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      },
+      "cloud_gateway": {
+        "title": "Thermostat {index} of {total}",
+        "description": "\"{gateway_label}\". Enter its local IP address to add it now, or leave this field blank to skip it — you can add it later from Settings > Devices & Services.",
+        "data": {
+          "host": "IP Address"
         }
       }
     },
@@ -36,7 +59,8 @@
       "unknown": "An unexpected error occurred."
     },
     "abort": {
-      "already_configured": "This thermostat is already configured."
+      "already_configured": "This thermostat is already configured.",
+      "no_devices_added": "No thermostats were added — every gateway was either skipped or failed to connect."
     }
   },
   "entity": {

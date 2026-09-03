@@ -3,6 +3,14 @@
     "step": {
       "user": {
         "title": "Termostato BTicino",
+        "description": "Come vuoi configurare il/i tuo/i termostato/i BTicino?",
+        "menu_options": {
+          "cloud": "Configura automaticamente dal cloud BTicino (consigliato, specialmente con più termostati)",
+          "manual": "Inserisci manualmente indirizzo IP e PIN"
+        }
+      },
+      "manual": {
+        "title": "Termostato BTicino",
         "description": "Inserisci l'indirizzo IP del termostato e il PIN locale (password XOpen).",
         "data": {
           "host": "Indirizzo IP",
@@ -10,7 +18,7 @@
           "retrieve_from_cloud": "Non conosci il PIN? Recuperalo dal Cloud"
         }
       },
-      "cloud": {
+      "manual_cloud": {
         "title": "Recupera PIN dal Cloud",
         "description": "Inserisci le credenziali del tuo account BTicino cloud per recuperare la password locale.",
         "data": {
@@ -18,11 +26,26 @@
           "password": "Password"
         }
       },
-      "select_plant": {
+      "manual_select_plant": {
         "title": "Seleziona Termostato",
         "description": "Sono stati trovati più termostati (impianti diversi o più gateway nello stesso impianto). Seleziona quello il cui PIN corrisponde all'indirizzo IP inserito.",
         "data": {
           "plant": "Termostato"
+        }
+      },
+      "cloud": {
+        "title": "Connetti al Cloud BTicino",
+        "description": "Inserisci le credenziali del tuo account cloud BTicino. Cercheremo ogni termostato registrato sul tuo account e li configureremo tutti.",
+        "data": {
+          "username": "Email",
+          "password": "Password"
+        }
+      },
+      "cloud_gateway": {
+        "title": "Termostato {index} di {total}",
+        "description": "\"{gateway_label}\". Inserisci il suo indirizzo IP locale per aggiungerlo ora, oppure lascia questo campo vuoto per saltarlo — potrai aggiungerlo in seguito da Impostazioni > Dispositivi e servizi.",
+        "data": {
+          "host": "Indirizzo IP"
         }
       }
     },
@@ -36,7 +59,8 @@
       "unknown": "Si è verificato un errore imprevisto."
     },
     "abort": {
-      "already_configured": "Questo termostato è già configurato."
+      "already_configured": "Questo termostato è già configurato.",
+      "no_devices_added": "Nessun termostato è stato aggiunto — ogni gateway è stato saltato o la connessione non è riuscita."
     }
   },
   "entity": {
