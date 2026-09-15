@@ -4,6 +4,8 @@
 
 [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Mirmanero&repository=ha-bticino-x8000&category=integration)
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/mirmanero)
+
 Unofficial custom integration for [Home Assistant](https://www.home-assistant.io/) to control **BTicino Smarther** thermostats over the local network (XOpen V3 protocol).
 
 > **Note:** This is an independent project, not affiliated with or supported by BTicino / Legrand. Use at your own risk.
