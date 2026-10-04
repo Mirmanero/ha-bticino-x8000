@@ -110,10 +110,16 @@ class BticinoClimateEntity(ClimateEntity):
         status = self._thermostat.status
         if status.mode is None or status.mode == "OFF":
             return HVACAction.OFF
-        if status.heating_load_state == "ON":
+
+        # Converte in stringa e maiuscolo per intercettare "ON", "on", "ACTIVE", o "True"
+        heating_state = str(status.heating_load_state).upper()
+        if heating_state in ("ON", "ACTIVE", "TRUE", "1"):
             return HVACAction.HEATING
-        if status.cooling_load_state == "ON":
+
+        cooling_state = str(status.cooling_load_state).upper()
+        if cooling_state in ("ON", "ACTIVE", "TRUE", "1"):
             return HVACAction.COOLING
+
         return HVACAction.IDLE
 
     @property
@@ -130,6 +136,15 @@ class BticinoClimateEntity(ClimateEntity):
         if status.mode == "PROTECTION":
             return PRESET_PROTECTION
         return PRESET_NONE
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the device specific state attributes."""
+        status = self._thermostat.status
+        return {
+            "program_mode": status.mode,  # Espone "AUTOMATIC", "MANUAL", "BOOST", ecc.
+            "current_function": status.function # Espone se è in "HEATING" o "COOLING"
+        }
 
     def _current_function(self) -> str:
         """Return the current function from thermostat status."""
