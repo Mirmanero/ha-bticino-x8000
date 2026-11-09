@@ -6,6 +6,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -31,9 +32,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     try:
         await thermostat.connect()
-    except Exception:
-        _LOGGER.error("Failed to connect to thermostat at %s:%d", host, port)
-        raise
+    except Exception as err:
+        # Raising ConfigEntryNotReady (instead of letting the raw
+        # connection error propagate) tells Home Assistant this is a
+        # transient failure: it will retry the setup automatically with
+        # a growing backoff, rather than marking the entry as failed and
+        # requiring the user to manually reload/reinstall it. This is
+        # the common case right after a restart, when the gateway hasn't
+        # released the previous session yet and briefly refuses new
+        # connections.
+        _LOGGER.warning("Failed to connect to thermostat at %s:%d: %s", host, port, err)
+        raise ConfigEntryNotReady(
+            f"Failed to connect to thermostat at {host}:{port}"
+        ) from err
 
     hass.data.setdefault(DOMAIN, {})
 
