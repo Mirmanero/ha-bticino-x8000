@@ -7,13 +7,17 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import CONF_PIN, DEFAULT_PORT, DOMAIN
 from .bticino.thermostat import Thermostat
+from .program_manager import ProgramManager
+from .program_api import async_setup_program_api
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.CLIMATE, Platform.SENSOR, Platform.SELECT]
+PLATFORMS = [Platform.CLIMATE, Platform.SENSOR, Platform.SELECT, Platform.BUTTON]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -21,6 +25,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host = entry.data[CONF_HOST]
     port = entry.data.get(CONF_PORT, DEFAULT_PORT)
     pin = entry.data[CONF_PIN]
+    store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_program_backups")
+    backups = (await store.async_load() or {}).get("backups", [])
 
     thermostat = Thermostat(host, password=pin, port=port)
 
@@ -41,9 +47,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         ) from err
 
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {"thermostat": thermostat}
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    async def save_backup(snapshot):
+        nonlocal backups
+        updated = (backups + [snapshot])[-20:]
+        await store.async_save({"backups": updated})
+        backups = updated
+
+    manager = ProgramManager(thermostat, save_backup, dt_util.now)
+    thermostat.on_status_update(manager.status_changed)
+    thermostat.on_disconnect(lambda: manager.status_changed(None))
+    hass.data[DOMAIN][entry.entry_id] = {"thermostat": thermostat, "program_manager": manager}
+    try:
+        await async_setup_program_api(hass)
+        try:
+            await manager.refresh()
+        except Exception:
+            _LOGGER.warning("Program list unavailable at startup; use Refresh programs to retry")
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except Exception:
+        hass.data[DOMAIN].pop(entry.entry_id, None)
+        await thermostat.disconnect()
+        raise
     return True
 
 

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="it"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BTicino Programs — offline UI test</title>
+<style>
+  :root{--primary-text-color:#202d36;--secondary-text-color:#697781;--primary-color:#267d9b;--info-color:#7886c3;--warning-color:#c48b27;--error-color:#be3c3c;--success-color:#237c52;--text-primary-color:#fff;--card-background-color:#fff;--secondary-background-color:#f1f4f5;--divider-color:#dbe2e5;--ha-card-border-radius:16px;--ha-card-background:var(--card-background-color)}
+  html[data-theme=dark]{--primary-text-color:#e6edf1;--secondary-text-color:#9babb7;--primary-color:#62bed0;--info-color:#9aa8de;--warning-color:#e7b95d;--error-color:#ff9090;--success-color:#8ed6af;--text-primary-color:#102d35;--card-background-color:#1d282f;--secondary-background-color:#172128;--divider-color:#33444f}
+  body{margin:0;padding:26px;background:var(--secondary-background-color);font-family:system-ui,sans-serif}#mount{max-width:980px;margin:auto} .demo-note{color:var(--secondary-text-color);max-width:980px;margin:0 auto 12px;font-size:12px}@media(max-width:600px){body{padding:12px}}
+</style>
+<p class="demo-note">Anteprima con dati simulati · nessun collegamento ai termostati</p><div id="mount"></div>
+<script src="/card.js"></script>
+<script>
+const args = new URLSearchParams(location.search);
+if(args.has("dark")) document.documentElement.dataset.theme="dark";
+const days=["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+function profile(number,name,slots){return{program_number:number,name,profile_type:"WEEKLY",valid:true,creation_date:"2026-10-26T10:00:00",days:Object.fromEntries(days.map(d=>[d,(slots[d]||[{time:"00:00",preset:"PROTECTION"}]).map((s,i)=>({id:String(i),...s}))])),sha256:"revision-"+number,checksum_verified:true,xml:"<program_profile />"}}
+const morning=Object.fromEntries(days.filter(d=>d!=="sunday").map(d=>[d,[{time:"00:00",preset:"PROTECTION"},{time:"10:00",preset:"DAY"},{time:"11:00",preset:"PROTECTION"}]]));
+const atrio={monday:[{time:"00:00",preset:"PROTECTION"},{time:"07:30",preset:"DAY"},{time:"13:00",preset:"PROTECTION"},{time:"15:00",preset:"DAY"},{time:"17:00",preset:"PROTECTION"},{time:"20:00",preset:"DAY"},{time:"22:00",preset:"PROTECTION"}],friday:[{time:"00:00",preset:"PROTECTION"},{time:"07:30",preset:"DAY"},{time:"13:00",preset:"PROTECTION"}]};
+for(const d of days.filter(d=>!["monday","friday"].includes(d)))atrio[d]=[{time:"00:00",preset:"PROTECTION"},{time:"20:00",preset:"DAY"},{time:"22:00",preset:"PROTECTION"}];
+window.demoPrograms={1:profile(1,"HA Lun-Sab 10-11",morning),2:profile(2,"Programma Atrio",atrio)};
+window.demoCalls=[];window.demoActive=2;window.demoFailList=args.has("fail");
+function catalog(){return{programs:Object.values(demoPrograms).map(p=>({number:p.program_number,name:p.name,type:p.profile_type,valid:p.valid,revision:p.sha256,read_only:false,error:null})),free_slots:[1,2,3,4,5,6,7,8,9,10].filter(n=>!demoPrograms[n]),active_program:demoActive,mode:"AUTOMATIC",function:"HEATING",connected:true,temperatures:{temperature_format:"CELSIUS",heating:{DAY:18,NIGHT:10,AWAY:10,PROTECTION:7},cooling:{DAY:30,NIGHT:30,AWAY:30,PROTECTION:35}},temperature_warning:"unverified",error:null}}
+window.demoHass={language:args.get("lang")||"it",config:{time_zone:"Europe/Rome",unit_system:{temperature:"C"}},user:{is_admin:!args.has("readonly")},states:{"climate.atrio":{state:"auto",attributes:{friendly_name:"Atrio",program_number:2,program_mode:"AUTOMATIC",current_function:"HEATING",temperature:18,current_temperature:19}}},
+  async callWS(msg){demoCalls.push(structuredClone(msg));await new Promise(r=>setTimeout(r,10));
+    if(msg.operation==="list"){if(demoFailList)throw Error("Thermostat is unavailable; refresh when connected");return catalog()}
+    if(msg.operation==="get")return{program:structuredClone(demoPrograms[msg.number]),catalog:catalog()};
+    if(msg.operation==="save"){const old=demoPrograms[msg.number];if(old&&old.sha256!==msg.revision)throw Error("Program changed on the thermostat; reload before saving");demoPrograms[msg.number]=profile(msg.number,msg.name,msg.days);demoPrograms[msg.number].sha256="new-"+Date.now();return{program:structuredClone(demoPrograms[msg.number]),catalog:catalog()}}
+    if(msg.operation==="activate"){demoActive=msg.number;demoHass.states["climate.atrio"].attributes.program_number=msg.number;return catalog()}
+    if(msg.operation==="delete"){delete demoPrograms[msg.number];return catalog()}
+  }};
+const card=document.createElement(args.has("today")?"bticino-today-card":"bticino-programs-card");card.setConfig({entity:"climate.atrio",show_details:args.has("today")&&!args.has("compact")});document.querySelector("#mount").append(card);card.hass=demoHass;window.demoCard=card;
+</script></html>

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+import voluptuous as vol
 
 from homeassistant.components.climate import (
     ClimateEntity,
@@ -13,8 +14,9 @@ from homeassistant.components.climate import (
 from homeassistant.components.climate.const import PRESET_NONE
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, CONF_HOST, UnitOfTemperature
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.core import HomeAssistant, SupportsResponse, callback
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.entity_platform import AddEntitiesCallback, async_get_current_platform
 
 from .const import DOMAIN
 from .bticino.thermostat import Thermostat
@@ -37,6 +39,17 @@ async def async_setup_entry(
     data = hass.data[DOMAIN][entry.entry_id]
     thermostat: Thermostat = data["thermostat"]
     async_add_entities([BticinoClimateEntity(thermostat, entry)], True)
+    async_get_current_platform().async_register_entity_service(
+        "read_program",
+        {vol.Required("program_number"): vol.All(vol.Coerce(int), vol.Range(min=0, max=10))},
+        "async_read_program",
+        supports_response=SupportsResponse.ONLY,
+    )
+    async_get_current_platform().async_register_entity_service(
+        "read_temperature_presets", {vol.Optional("allow_unverified", default=False): bool},
+        "async_read_temperature_presets",
+        supports_response=SupportsResponse.ONLY,
+    )
 
 
 class BticinoClimateEntity(ClimateEntity):
@@ -143,8 +156,34 @@ class BticinoClimateEntity(ClimateEntity):
         status = self._thermostat.status
         return {
             "program_mode": status.mode,  # Espone "AUTOMATIC", "MANUAL", "BOOST", ecc.
-            "current_function": status.function # Espone se è in "HEATING" o "COOLING"
+            "current_function": status.function,
+            "program_number": status.program_number,
+            "use_date_and_time_validity": status.use_date_and_time_validity,
+            "end_date_and_time_validity": status.end_date_and_time_validity,
         }
+
+    async def _async_set_mode(self, **kwargs: Any) -> None:
+        """Surface rejected commands; only device reports update HA state."""
+        try:
+            accepted = await self._thermostat.set_mode(**kwargs)
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
+        if not accepted:
+            raise HomeAssistantError("Thermostat did not acknowledge the mode change")
+
+    async def async_read_program(self, program_number: int) -> dict[str, Any]:
+        """Return a read-only program snapshot as the action response."""
+        try:
+            return await self._thermostat.read_program(program_number)
+        except Exception as err:
+            raise HomeAssistantError(f"Could not read program: {err}") from err
+
+    async def async_read_temperature_presets(self, allow_unverified: bool = False) -> dict[str, Any]:
+        """Expose temperature settings without raw configuration or network data."""
+        try:
+            return await self._thermostat.read_temperature_presets(allow_unverified=allow_unverified)
+        except Exception as err:
+            raise HomeAssistantError(f"Could not read temperature presets: {err}") from err
 
     def _current_function(self) -> str:
         """Return the current function from thermostat status."""
@@ -153,14 +192,14 @@ class BticinoClimateEntity(ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set HVAC mode (never changes function)."""
         if hvac_mode == HVACMode.OFF:
-            await self._thermostat.set_mode(mode="OFF")
+            await self._async_set_mode(mode="OFF", function=self._current_function())
         elif hvac_mode == HVACMode.AUTO:
-            await self._thermostat.set_mode(
+            await self._async_set_mode(
                 mode="AUTOMATIC",
                 function=self._current_function(),
             )
         elif hvac_mode == HVACMode.HEAT:
-            await self._thermostat.set_mode(
+            await self._async_set_mode(
                 mode="MANUAL",
                 function=self._current_function(),
                 setpoint=self._thermostat.status.setpoint,
@@ -172,7 +211,7 @@ class BticinoClimateEntity(ClimateEntity):
         if temperature is None:
             return
 
-        await self._thermostat.set_mode(
+        await self._async_set_mode(
             mode="MANUAL",
             function=self._current_function(),
             setpoint=temperature,
@@ -186,15 +225,16 @@ class BticinoClimateEntity(ClimateEntity):
                 PRESET_BOOST_60: 60,
                 PRESET_BOOST_90: 90,
             }[preset_mode]
-            await self._thermostat.set_mode(
+            await self._async_set_mode(
                 mode="BOOST",
                 function=self._current_function(),
                 boost_minutes=minutes,
             )
         elif preset_mode == PRESET_PROTECTION:
-            await self._thermostat.set_mode(mode="PROTECTION")
+            await self._async_set_mode(
+                mode="PROTECTION", function=self._current_function())
         elif preset_mode == PRESET_NONE:
-            await self._thermostat.set_mode(
+            await self._async_set_mode(
                 mode="AUTOMATIC",
                 function=self._current_function(),
             )

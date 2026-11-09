@@ -1,0 +1,33 @@
+read_temperature_presets:
+  name: Leggi temperature dei livelli
+  description: Legge DAY, NIGHT, AWAY e PROTECTION per riscaldamento e raffrescamento. Restituisce solo temperature e unità, senza la configurazione completa.
+  target:
+    entity:
+      integration: bticino_thermostat
+      domain: climate
+  fields:
+    allow_unverified:
+      name: Consenti lettura con checksum non verificato
+      description: Per diagnostica dei firmware che restituiscono un checksum diverso dal contenuto. La risposta segnala checksum_verified false. Non modifica il dispositivo.
+      default: false
+      selector:
+        boolean:
+read_program:
+  name: Leggi programma settimanale
+  description: Legge un programma esistente dal termostato senza modificarlo o attivarlo. Restituisce XML e fasce nella risposta.
+  target:
+    entity:
+      integration: bticino_thermostat
+      domain: climate
+  fields:
+    program_number:
+      name: Numero programma
+      description: Numero del programma da leggere, visibile negli attributi del termostato. Zero identifica il programma predefinito.
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 1
+          mode: box

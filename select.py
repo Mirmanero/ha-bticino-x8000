@@ -7,6 +7,7 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, FUNCTION_HEATING, FUNCTION_COOLING
@@ -24,7 +25,10 @@ async def async_setup_entry(
     """Set up BTicino Thermostat select entity."""
     data = hass.data[DOMAIN][entry.entry_id]
     thermostat: Thermostat = data["thermostat"]
-    async_add_entities([BticinoFunctionSelect(thermostat, entry)])
+    entities = [BticinoFunctionSelect(thermostat, entry)]
+    if "program_manager" in data:
+        entities.append(BticinoProgramSelect(data["program_manager"], entry))
+    async_add_entities(entities)
 
 
 class BticinoFunctionSelect(SelectEntity):
@@ -63,29 +67,38 @@ class BticinoFunctionSelect(SelectEntity):
 
         if mode in ("OFF", "PROTECTION"):
             # Just switch function, keep the mode as-is
-            await self._thermostat.set_mode(
+            await self._async_set_mode(
                 mode=mode,
                 function=new_function,
             )
         elif mode == "MANUAL":
-            await self._thermostat.set_mode(
+            await self._async_set_mode(
                 mode="MANUAL",
                 function=new_function,
                 setpoint=status.setpoint,
             )
         elif mode == "BOOST":
             boost_time = int(status.raw_params.get("boostTime", 30))
-            await self._thermostat.set_mode(
+            await self._async_set_mode(
                 mode="BOOST",
                 function=new_function,
                 boost_minutes=boost_time,
             )
         else:
             # AUTOMATIC or unknown
-            await self._thermostat.set_mode(
+            await self._async_set_mode(
                 mode="AUTOMATIC",
                 function=new_function,
             )
+
+    async def _async_set_mode(self, **kwargs) -> None:
+        """Expose failed function changes to Home Assistant."""
+        try:
+            accepted = await self._thermostat.set_mode(**kwargs)
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
+        if not accepted:
+            raise HomeAssistantError("Thermostat did not acknowledge the function change")
 
     async def async_added_to_hass(self) -> None:
         """Register for push updates."""
@@ -95,3 +108,57 @@ class BticinoFunctionSelect(SelectEntity):
     def _on_status_update(self, status: ThermostatStatus) -> None:
         """Handle push status update."""
         self.async_write_ha_state()
+
+
+class BticinoProgramSelect(SelectEntity):
+    """A native select usable from dashboards, scripts and automations."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_translation_key = "active_program"
+    _attr_icon = "mdi:calendar-check"
+
+    def __init__(self, manager, entry):
+        self._manager = manager
+        self._attr_unique_id = f"bticino_{entry.data[CONF_HOST]}_program"
+        self._attr_device_info = {"identifiers": {(DOMAIN, entry.data[CONF_HOST])}}
+
+    def _options(self):
+        return {p["number"]: f'{p["number"]} · {p["name"]}'
+            for p in self._manager.snapshot()["programs"]
+            if p["number"] > 0 and p["valid"] and not p["error"]}
+
+    @property
+    def available(self):
+        return self._manager.thermostat.connected and bool(self._options())
+
+    @property
+    def options(self):
+        return list(self._options().values())
+
+    @property
+    def current_option(self):
+        status = self._manager.thermostat.status
+        if status.mode != "AUTOMATIC":
+            return None
+        return self._options().get(status.program_number)
+
+    @property
+    def extra_state_attributes(self):
+        status = self._manager.thermostat.status
+        return {"program_number": status.program_number, "program_mode": status.mode}
+
+    async def async_select_option(self, option):
+        number = next((n for n, label in self._options().items() if label == option), None)
+        if number is None:
+            raise HomeAssistantError("Program is not in the current list; refresh programs")
+        try:
+            await self._manager.activate(number)
+        except Exception as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def async_added_to_hass(self):
+        self.async_on_remove(self._manager.subscribe(self.async_write_ha_state))
+
+    async def async_update(self):
+        await self._manager.refresh()

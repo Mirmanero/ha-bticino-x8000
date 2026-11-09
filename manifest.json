@@ -3,9 +3,10 @@
   "name": "BTicino Thermostat",
   "codeowners": [],
   "config_flow": true,
-  "documentation": "",
+  "dependencies": ["http", "websocket_api"],
+  "documentation": "https://github.com/Mirmanero/ha-bticino-x8000",
   "integration_type": "device",
   "iot_class": "local_push",
   "requirements": [],
-  "version": "1.2.1"
+  "version": "1.3.0-beta.4"
 }

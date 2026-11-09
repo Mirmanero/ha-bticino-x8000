@@ -65,6 +65,8 @@ class XOpenConnection:
 
         # Pending command futures: seq_id -> Future[ParsedMessage]
         self._pending: dict[str, asyncio.Future] = {}
+        self._pending_actions: dict[str, str] = {}
+        self._command_lock = asyncio.Lock()
 
         # Callbacks
         self._event_callbacks: list[Callable[[ParsedMessage], None]] = []
@@ -175,7 +177,14 @@ class XOpenConnection:
         logger.info("Connection closed")
 
     async def send_command(self, xml: str,
-                           timeout: float = COMMAND_TIMEOUT) -> ParsedMessage:
+                           timeout: float = COMMAND_TIMEOUT,
+                           expected_action: Optional[str] = None) -> ParsedMessage:
+        """Serialize commands, including keepalives, for replies without SeqID."""
+        async with self._command_lock:
+            return await self._send_command_unlocked(xml, timeout, expected_action)
+
+    async def _send_command_unlocked(self, xml: str, timeout: float,
+                                     expected_action: Optional[str]) -> ParsedMessage:
         """Send an XML command and wait for the matching response.
 
         Creates a Future keyed by a unique SeqID. The reader loop
@@ -191,6 +200,8 @@ class XOpenConnection:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[ParsedMessage] = loop.create_future()
         self._pending[seq_id] = future
+        if expected_action:
+            self._pending_actions[seq_id] = expected_action
 
         try:
             await self._write(xml)
@@ -199,6 +210,7 @@ class XOpenConnection:
             raise ConnectionError(f"Command timeout ({timeout}s)")
         finally:
             self._pending.pop(seq_id, None)
+            self._pending_actions.pop(seq_id, None)
 
     async def _write(self, data: str) -> None:
         """Send a string over the TCP connection."""
@@ -374,23 +386,18 @@ class XOpenConnection:
         logger.debug("DISPATCH: type=%s action=%s seq=%s",
                      msg.service_type, msg.action_id, msg.seq_id)
 
-        # RSP messages: complete pending futures
-        if msg.service_type == "RSP":
-            # Try exact SeqID match first
-            if msg.seq_id and msg.seq_id in self._pending:
-                fut = self._pending.pop(msg.seq_id)
+        seq_id = msg.seq_id if msg.seq_id in self._pending else None
+        if not msg.seq_id and len(self._pending) == 1:
+            seq_id = next(iter(self._pending))
+        if seq_id is not None and msg.service_type in ("RSP", "EVT"):
+            expected = self._pending_actions.get(seq_id)
+            matches = (msg.action_id == expected if expected else msg.service_type == "RSP")
+            if matches or (msg.service_type == "RSP" and msg.action_id == "NackMsg"):
+                fut = self._pending.pop(seq_id)
                 if not fut.done():
                     fut.set_result(msg)
                 return
-            # Fallback: thermostat sometimes replies without SeqID
-            # (e.g. NackMsg/AckMsg to SET commands). Complete the oldest
-            # pending future if there is exactly one.
-            if not msg.seq_id and self._pending:
-                seq_id, fut = next(iter(self._pending.items()))
-                self._pending.pop(seq_id)
-                if not fut.done():
-                    fut.set_result(msg)
-                return
+            # A file GET may ACK first, then deliver device_file. Keep waiting.
 
         # EVT messages (or unsolicited RSP): notify event callbacks
         if msg.service_type == "EVT":

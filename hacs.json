@@ -1,5 +1,6 @@
 {
   "name": "BTicino Thermostat",
   "content_in_root": true,
+  "homeassistant": "2024.8.0",
   "render_readme": true
 }

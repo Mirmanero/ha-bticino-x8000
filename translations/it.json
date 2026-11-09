@@ -97,6 +97,14 @@
           "heating": "Riscaldamento",
           "cooling": "Raffrescamento"
         }
+      },
+      "active_program": {
+        "name": "Programma attivo"
+      }
+    },
+    "button": {
+      "refresh_programs": {
+        "name": "Aggiorna programmi"
       }
     }
   }

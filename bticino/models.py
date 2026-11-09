@@ -81,3 +81,6 @@ class ParsedMessage:
     who: str = ""
     where: str = ""
     raw_xml: str = ""
+    is_last: str = "TRUE"
+    file_data: Optional[str] = None
+    file_encoding: str = ""

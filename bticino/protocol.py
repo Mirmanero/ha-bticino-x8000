@@ -15,6 +15,9 @@ Message format (V3):
 </OWNMsg>
 """
 import xml.etree.ElementTree as ET
+import re
+import hashlib
+import hmac
 from io import StringIO
 from typing import Optional
 
@@ -23,6 +26,74 @@ from .models import ParsedMessage
 # XOpen namespace
 NS = "http://www.bticino.it/xopen/v1"
 NS_MAP = {"": NS}
+
+
+def _read_file_text(raw_xml: str, default: str) -> str:
+    """Decode adjacent CDATA/text nodes without normalizing CRLF bytes."""
+    match = re.search(r'<(?:\w+:)?file_data\b[^>]*>(.*?)</(?:\w+:)?file_data\s*>',
+                      raw_xml, re.DOTALL)
+    if not match:
+        return default
+    body = match.group(1)
+    pieces = []
+    end = 0
+    for part in re.finditer(r'<!\[CDATA\[(.*?)\]\]>|([^<]+)', body, re.DOTALL):
+        if part.start() != end:
+            return default
+        end = part.end()
+        if part.group(1) is not None:
+            pieces.append(part.group(1))
+        else:
+            # Numeric character references preserve CR outside CDATA as well.
+            text = part.group(2).replace("\r", "&#13;")
+            pieces.append(ET.fromstring("<text>" + text + "</text>").text or "")
+    return "".join(pieces) if end == len(body) else default
+
+
+def checked_file_content(msg: ParsedMessage) -> tuple[str, str | None]:
+    """Require a matching SHA-256; account for XML line-ending normalization.
+
+    Every accepted representation must match the device's checksum exactly.
+    Diagnostics contain counts/format only, never configuration values.
+    """
+    content = msg.file_data
+    if content is None:
+        raise ValueError("No file content")
+    if len(content.encode("utf-8")) > 256 * 1024:
+        raise ValueError("File exceeds the read limit")
+    checksum = msg.params.get("sha256sum")
+    if checksum is None:
+        return content, None
+    checksum = checksum.strip().lower()
+    well_formed = re.fullmatch(r"[0-9a-f]{64}", checksum) is not None
+    if well_formed:
+        if hmac.compare_digest(hashlib.sha256(content.encode("utf-8")).hexdigest(), checksum):
+            return content, "exact"
+        # Some XML transports normalize line endings or add whitespace around
+        # the file. These variants preserve XML field values; none bypass SHA.
+        variants = {content, content.strip(" \t\r\n")}
+        for base in tuple(variants):
+            lf = base.replace("\r\n", "\n").replace("\r", "\n")
+            variants.update((lf, lf.replace("\n", "\r\n")))
+        for base in tuple(variants):
+            variants.update((base.rstrip("\r\n"), base.rstrip("\r\n") + "\n",
+                             base.rstrip("\r\n") + "\r\n"))
+        for base in tuple(variants):
+            variants.add(base.removeprefix("\ufeff"))
+            if not base.startswith("\ufeff"):
+                variants.add("\ufeff" + base)
+        for candidate in variants:
+            if hmac.compare_digest(hashlib.sha256(candidate.encode("utf-8")).hexdigest(), checksum):
+                return candidate, "xml_whitespace_or_bom"
+    crlf = content.count("\r\n")
+    raise ValueError(
+        "SHA-256 checksum does not match; diagnostics: "
+        f"bytes={len(content.encode('utf-8'))}, "
+        f"crlf={crlf}, lf_only={content.count(chr(10)) - crlf}, "
+        f"bom={content.startswith(chr(0xfeff))}, "
+        f"replacement_chars={content.count(chr(0xfffd))}, "
+        f"cdata_sections={msg.raw_xml.count('<![CDATA[')}, "
+        f"checksum_is_hex64={well_formed}")
 
 # WHO codes
 WHO_THERMOSTAT = "4"
@@ -177,6 +248,52 @@ def build_get_program_list() -> str:
     return _build_v3("GET", "device_program_number_list", who=WHO_THERMOSTAT)
 
 
+def program_file_name(program_number: int) -> str:
+    """Only allow the program files used by the official Thermostat app."""
+    if type(program_number) is not int or not 0 <= program_number <= 10:
+        raise ValueError("program_number must be an integer between 0 and 10")
+    return f"device_program_profile_{program_number}.xml"
+
+
+def build_get_program_file(program_number: int) -> str:
+    """Read a program via XOpen V3 WHO 1004; never writes or selects it."""
+    return _build_v3("GET", "device_file",
+                     [{"file_name": program_file_name(program_number)}], who="1004")
+
+
+def build_get_temperature_presets() -> str:
+    """Read configuration for local extraction of temperature fields only."""
+    return _build_v3("GET", "device_file",
+                     [{"file_name": "device_configuration.xml"}], who="1004")
+
+
+def build_set_program_file(program_number: int, content: str) -> str:
+    """SET only an explicit user program, using the official app's envelope."""
+    from .programs import parse_program_file
+    if program_number == 0:
+        raise ValueError("Program zero is reserved")
+    parsed = parse_program_file(content, program_number)
+    if not parsed["valid"] or parsed["profile_type"] != "WEEKLY":
+        raise ValueError("Only valid weekly user programs can be uploaded")
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    envelope = _build_v3("SET", "device_file", [{
+        "file_name": program_file_name(program_number), "sha256sum": digest}], who="1004")
+    cdata = content.replace("]]>", "]]]]><![CDATA[>")
+    data = f'<Params><file_data encoded=""><![CDATA[{cdata}]]></file_data></Params>'
+    return envelope.replace("</ParamList>", data + "</ParamList>")
+
+
+def build_delete_program_file(program_number: int) -> str:
+    """Official app's deletion command, restricted to user profiles."""
+    name = program_file_name(program_number)
+    if program_number == 0:
+        raise ValueError("Program zero is reserved")
+    envelope = _build_v3("SET", "device_file", [{"file_name": name,
+        "sha256sum": hashlib.sha256(b"ERASE").hexdigest()}], who="1004")
+    return envelope.replace("</ParamList>",
+        '<Params><file_data encoded=""><![CDATA[ERASE]]></file_data></Params></ParamList>')
+
+
 # --- Response parser ---
 
 def _strip_ns(tag: str) -> str:
@@ -224,6 +341,7 @@ def _parse_v3(root, msg: ParsedMessage):
         elif tag == "SeqID":
             msg.seq_id = elem.get("ID", "")
             msg.progress = elem.get("Progress", "")
+            msg.is_last = elem.get("IsLast", "TRUE")
         elif tag == "Address":
             msg.who = elem.get("WHO", "")
             msg.where = elem.get("WHERE", "")
@@ -234,6 +352,14 @@ def _parse_v3(root, msg: ParsedMessage):
                 if _strip_ns(params_elem.tag) == "Params":
                     for k, v in params_elem.attrib.items():
                         msg.params[k] = v
+                    for child in params_elem:
+                        if _strip_ns(child.tag) == "file_data":
+                            if msg.file_data is not None or len(child):
+                                msg.file_encoding = "unsupported_structure"
+                                continue
+                            msg.file_data = child.text or ""
+                            msg.file_encoding = child.get("encoded", "")
+                            msg.file_data = _read_file_text(msg.raw_xml, msg.file_data)
 
 
 def _parse_v1(root, msg: ParsedMessage):

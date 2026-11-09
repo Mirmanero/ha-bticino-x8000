@@ -97,6 +97,14 @@
           "heating": "Heating",
           "cooling": "Cooling"
         }
+      },
+      "active_program": {
+        "name": "Active program"
+      }
+    },
+    "button": {
+      "refresh_programs": {
+        "name": "Refresh programs"
       }
     }
   }

@@ -1,0 +1,10 @@
+{
+  "name": "ha-bticino-x8000-program-editor",
+  "private": true,
+  "scripts": {
+    "test:frontend": "node tests/frontend/test-card.cjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  }
+}
