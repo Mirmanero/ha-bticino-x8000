@@ -251,10 +251,6 @@ class BticinoClimateEntity(ClimateEntity):
         except Exception:
             _LOGGER.warning("Could not get initial status, waiting for push update")
 
-    async def async_will_remove_from_hass(self) -> None:
-        """Run when entity is removed: disconnect."""
-        await self._thermostat.disconnect()
-
     @callback
     def _on_status_update(self, status: ThermostatStatus) -> None:
         """Handle push status update from thermostat."""
