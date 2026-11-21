@@ -243,7 +243,14 @@ class BticinoClimateEntity(ClimateEntity):
         """Run when entity is added to hass: connect and register callbacks."""
         self._thermostat.on_status_update(self._on_status_update)
         self._thermostat.on_disconnect(self._on_disconnect)
-        self._thermostat._conn.on_connect(self._on_connect)
+        # _conn is None once the thermostat was disconnected (e.g. the entry
+        # is being reloaded while the platform is still adding entities).
+        # Registering on None raised AttributeError and left the entry loaded
+        # with no climate entity and every other entity unavailable.
+        if self._thermostat._conn is not None:
+            self._thermostat._conn.on_connect(self._on_connect)
+        else:
+            _LOGGER.warning("Thermostat not connected, reconnect callback not registered")
 
         try:
             await self._thermostat.get_status()
